@@ -45,6 +45,10 @@ class ClientManager {
         logger.info('clear cache Deployments key', {
             key: deploymentKey,
         });
+        if (!redisClient) {
+            logger.warn('Redis client is not available, skipping cache clear.');
+            return Promise.resolve(null);
+        }
         const redisCacheKey = this.getUpdateCheckCacheKey(
             deploymentKey,
             appVersion,
@@ -81,6 +85,19 @@ class ClientManager {
                 logger,
             );
         }
+        if (!redisClient) {
+            logger.warn(
+                'Redis client is not available, fetching update check from DB instead of cache.',
+            );
+            return this.updateCheck(
+                deploymentKey,
+                appVersion,
+                label,
+                packageHash,
+                clientUniqueId,
+                logger,
+            );
+        }
         const redisCacheKey = this.getUpdateCheckCacheKey(
             deploymentKey,
             appVersion,
@@ -108,7 +125,9 @@ class ClientManager {
                 try {
                     logger.debug('updateCheckFromCache read from db');
                     const strRs = JSON.stringify(rs);
-                    redisClient.setEx(redisCacheKey, EXPIRED, strRs);
+                    if (redisClient) {
+                        redisClient.setEx(redisCacheKey, EXPIRED, strRs);
+                    }
                 } catch (e) {
                     // do nothing
                 }
@@ -139,6 +158,12 @@ class ClientManager {
             false,
         );
         if (rolloutClientUniqueIdCache === false) {
+            return this.random(rollout);
+        }
+        if (!redisClient) {
+            // logger.warn(
+            //     'Redis client is not available, falling back to random rollout selection.',
+            // );
             return this.random(rollout);
         }
         const redisCacheKey = this.getChosenManCacheKey(packageId, rollout, clientUniqueId);

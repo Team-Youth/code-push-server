@@ -1,0 +1,34 @@
+FROM node:lts-alpine
+
+# 앱 디렉토리 생성
+WORKDIR /app
+
+# 패키지 파일 복사
+COPY package*.json ./
+
+# 모든 의존성 설치 (빌드를 위해 devDependencies도 필요)
+RUN npm ci
+
+# 애플리케이션 코드 복사
+COPY . .
+
+# TypeScript 빌드
+RUN npm run build
+
+# 프로덕션 의존성만 다시 설치
+RUN npm ci --only=production && npm cache clean --force
+
+# 데이터 디렉토리 생성
+RUN mkdir -p /data/storage /data/tmp /app/keys
+
+# PM2 설치
+RUN npm install -g pm2@latest
+
+# 권한 설정
+RUN chmod +x bin/www.js bin/db.js
+
+# 포트 노출
+EXPOSE 3000
+
+# 빌드된 www.js 파일을 직접 실행
+CMD ["pm2-runtime", "start", "bin/www.js", "--name", "code-push-server", "-i", "max"] 

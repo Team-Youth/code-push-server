@@ -11,5 +11,6 @@
     "allowSyntheticDefaultImports": true,
     "allowJs": true
   },
-  "include": ["src/**/*.*"]
+  "include": ["src/**/*.ts", "src/**/*.js"],
+  "exclude": ["node_modules", "bin", "tests"]
 }

@@ -1,0 +1,50 @@
+FROM node:lts-alpine
+
+# 앱 디렉토리 생성
+WORKDIR /app
+
+# 패키지 파일 복사
+COPY package*.json ./
+
+# 모든 의존성 설치 (devDependencies 포함 - TypeScript 빌드용)
+RUN npm ci
+
+# 애플리케이션 코드 복사
+COPY . .
+
+# TypeScript 빌드
+RUN npm run build
+
+# 빌드 후 파일 구조 확인 (디버그용)
+RUN ls -la bin/
+
+# 실행 권한 부여
+RUN chmod +x ./bin/www.js
+
+# 프로덕션 의존성만 설치
+RUN npm ci --only=production && npm cache clean --force
+
+# 데이터 디렉토리 생성 (로컬 임시 파일용)
+RUN mkdir -p /tmp/storage /tmp/data
+
+# 비root 사용자 생성
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodejs -u 1001
+
+# 권한 설정
+RUN chown -R nodejs:nodejs /app /tmp/storage /tmp/data
+# RUN chmod +x bin/www.js bin/db.js # 이미 위에서 ./bin/www.js에 권한 부여
+
+# 비root 사용자로 실행
+USER nodejs
+
+# 포트 노출 (Cloud Run은 8080 포트 사용)
+EXPOSE 8080
+
+# 환경변수 설정
+ENV PORT=8080
+ENV NODE_ENV=production
+
+ENTRYPOINT []
+# node로 직접 실행
+CMD ["node", "./bin/www.js"] 

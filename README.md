@@ -20,6 +20,7 @@ Since the original [code-push-server](https://github.com/lisong/code-push-server
 -   s3: store bundle files in [aws](https://aws.amazon.com/)
 -   oss: store bundle files in [aliyun](https://www.aliyun.com/product/oss)
 -   tencentcloud: store bundle files in [tencentcloud](https://cloud.tencent.com/product/cos)
+-   gcs: store bundle files in [Google Cloud Storage](https://cloud.google.com/storage)
 
 ## Correct use of code-push hot update
 

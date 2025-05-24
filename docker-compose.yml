@@ -1,26 +1,36 @@
 version: '3.7'
 services:
   server:
-    image: shmopen/code-push-server:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.local
     volumes:
       - data-storage:/data/storage
       - data-tmp:/data/tmp
+      - ./gcs-service-account-key.json:/app/keys/service-account.json:ro
     environment:
-      DOWNLOAD_URL: 'http://YOUR_MACHINE_IP:3000/download'
-      TOKEN_SECRET: 'YOUR_JWT_TOKEN_SECRET'
+      STORAGE_TYPE: 'gcs'
+      GCS_PROJECT_ID: 'youth-baa19'
+      GCS_BUCKET_NAME: 'pt-business-certificate'
+      GCS_KEY_FILENAME: '/app/keys/service-account.json'
+      GCS_DOWNLOAD_URL: 'https://storage.googleapis.com/pt-business-certificate'
+      DOWNLOAD_URL: 'http://localhost:3000/download'
+      TOKEN_SECRET: 'test-token-secret-for-development-only-change-in-production'
       RDS_HOST: 'mysql'
       RDS_USERNAME: 'codepush'
       RDS_PASSWORD: '123456'
       RDS_DATABASE: 'codepush'
       STORAGE_DIR: '/data/storage'
       DATA_DIR: '/data/tmp'
-      NODE_ENV: 'production'
-      REDIS_HOST: 'redis'
+      NODE_ENV: 'development'
+      TRY_LOGIN_TIMES: '0'
+      UPDATE_CHECK_CACHE: 'false'
+      ROLLOUT_CLIENT_UNIQUE_ID_CACHE: 'false'
+      LOG_LEVEL: 'debug'
     ports:
       - '3000:3000'
     depends_on:
       - mysql
-      - redis
   mysql:
     image: mysql:latest
     volumes:
@@ -28,12 +38,7 @@ services:
       - ./sql/codepush-all-docker.sql:/docker-entrypoint-initdb.d/codepush-all.sql
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: 'On'
-  redis:
-    image: redis:latest
-    volumes:
-      - data-redis:/data
 volumes:
   data-storage:
   data-tmp:
   data-mysql:
-  data-redis:

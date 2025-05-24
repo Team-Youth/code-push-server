@@ -32,10 +32,13 @@ export const config = {
         username: process.env.RDS_USERNAME || 'root',
         password: process.env.RDS_PASSWORD || 'password',
         database: process.env.RDS_DATABASE || 'codepush',
-        host: process.env.RDS_HOST || '127.0.0.1',
-        port: toNumber(process.env.RDS_PORT, 3306),
         dialect: 'mysql',
         logging: false,
+        dialectOptions: process.env.RDS_SOCKET_PATH
+            ? {
+                  socketPath: process.env.RDS_SOCKET_PATH,
+              }
+            : undefined,
     },
     // Config for qiniu (http://www.qiniu.com/) cloud storage when storageType value is "qiniu".
     qiniu: {
@@ -74,6 +77,14 @@ export const config = {
         // binary files download host address
         downloadUrl: process.env.COS_DOWNLOAD_URL || process.env.DOWNLOAD_URL,
     },
+    // Config for Google Cloud Storage (https://cloud.google.com/storage) when storageType value is "gcs".
+    gcs: {
+        projectId: process.env.GCS_PROJECT_ID,
+        keyFilename: process.env.GCS_KEY_FILENAME, // path to service account key file
+        bucketName: process.env.GCS_BUCKET_NAME,
+        // binary files download host address
+        downloadUrl: process.env.GCS_DOWNLOAD_URL || process.env.DOWNLOAD_URL,
+    },
     // Config for local storage when storageType value is "local".
     local: {
         // Binary files storage dir, Do not use tmpdir and it's public download dir.
@@ -110,7 +121,8 @@ export const config = {
             | 'qiniu'
             | 's3'
             | 'oss'
-            | 'tencentcloud',
+            | 'tencentcloud'
+            | 'gcs',
         // options value is (true | false), when it's true, it will cache updateCheck results in redis.
         updateCheckCache: toBool(process.env.UPDATE_CHECK_CACHE),
         // options value is (true | false), when it's true, it will cache rollout results in redis

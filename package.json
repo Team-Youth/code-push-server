@@ -32,6 +32,7 @@
     "init": "node ./bin/db.js init",
     "upgrade": "node ./bin/db.js upgrade",
     "build": "rm -rf bin && tsc",
+    "test:gcs": "npm run build && node examples/gcs-test.js",
     "release": "npm run build && npm test && standard-version && git push --follow-tags origin master && npm publish",
     "release-docker": "make release-docker",
     "test": "make test",
@@ -39,6 +40,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@google-cloud/storage": "6.12.0",
     "aliyun-oss-upload-stream": "1.3.0",
     "aliyun-sdk": "1.12.4",
     "aws-sdk": "2.1176.0",

@@ -38,7 +38,7 @@ Versions.findOne({ where: { type: 1 } })
         // create server and listen
         const server = http.createServer(app);
 
-        const port = normalizePort(process.env.PORT || '3000');
+        const port = normalizePort(process.env.PORT || '8080');
 
         let host = null;
         if (process.env.HOST) {

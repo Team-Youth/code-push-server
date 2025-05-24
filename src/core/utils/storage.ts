@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { Storage } from '@google-cloud/storage';
 import ALYOSSStream from 'aliyun-oss-upload-stream';
 import ALY from 'aliyun-sdk';
 import AWS from 'aws-sdk';
@@ -227,6 +228,55 @@ function uploadFileToTencentCloud(key: string, filePath: string, logger: Logger)
     });
 }
 
+function uploadFileToGCS(key: string, filePath: string, logger: Logger): Promise<void> {
+    return new Promise((resolve, reject) => {
+        logger.info('try uploadFileToGCS', { key });
+        
+        const projectId = _.get(config, 'gcs.projectId');
+        const keyFilename = _.get(config, 'gcs.keyFilename');
+        const bucketName = _.get(config, 'gcs.bucketName');
+        
+        if (!projectId || !bucketName) {
+            reject(new AppError('GCS projectId and bucketName are required'));
+            return;
+        }
+        
+        const storage = new Storage({
+            projectId,
+            keyFilename, // optional: if not provided, will use default credentials
+        });
+        
+        const bucket = storage.bucket(bucketName);
+        const file = bucket.file(key);
+        
+        // Check if file already exists
+        file.exists()
+            .then(([exists]) => {
+                if (exists) {
+                    logger.info('uploadFileToGCS file exists, skip upload', { key });
+                    resolve();
+                    return;
+                }
+                
+                // Upload file
+                return bucket.upload(filePath, {
+                    destination: key,
+                    public: true, // Make file publicly accessible
+                    metadata: {
+                        cacheControl: 'public, max-age=31536000',
+                    },
+                });
+            })
+            .then(() => {
+                logger.info('uploadFileToGCS success', { key });
+                resolve();
+            })
+            .catch((error) => {
+                reject(new AppError(error.message));
+            });
+    });
+}
+
 export function uploadFileToStorage(key: string, filePath: string, logger: Logger): Promise<void> {
     const { storageType } = config.common;
     switch (storageType) {
@@ -240,6 +290,8 @@ export function uploadFileToStorage(key: string, filePath: string, logger: Logge
             return uploadFileToQiniu(key, filePath, logger);
         case 'tencentcloud':
             return uploadFileToTencentCloud(key, filePath, logger);
+        case 'gcs':
+            return uploadFileToGCS(key, filePath, logger);
         default:
             throw new AppError(`${storageType} storageType does not support.`);
     }

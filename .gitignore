@@ -17,3 +17,6 @@ node_modules/
 # vs code
 .history
 .idea
+gcs-service-account-key.json
+.env
+deploy-to-cloudrun.sh

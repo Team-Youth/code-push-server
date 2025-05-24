@@ -118,7 +118,7 @@ class AccountManager {
                 return users;
             })
             .then((users) => {
-                if (tryLoginTimes > 0) {
+                if (tryLoginTimes > 0 && redisClient) {
                     const loginKey = `${LOGIN_LIMIT_PRE}${users.id}`;
                     return redisClient.get(loginKey).then((loginErrorTimes) => {
                         if (Number(loginErrorTimes) > tryLoginTimes) {
@@ -131,7 +131,7 @@ class AccountManager {
             })
             .then((users) => {
                 if (!passwordVerifySync(password, users.password)) {
-                    if (tryLoginTimes > 0) {
+                    if (tryLoginTimes > 0 && redisClient) {
                         const loginKey = `${LOGIN_LIMIT_PRE}${users.id}`;
                         redisClient.exists(loginKey).then((isExists) => {
                             if (!isExists) {
@@ -150,6 +150,12 @@ class AccountManager {
     }
 
     sendRegisterCode(email: string) {
+        if (!config.common.allowRegistration) {
+            return Promise.reject(new AppError('New account registration is disabled.'));
+        }
+        if (!redisClient) {
+            return Promise.reject(new AppError('Email verification service is unavailable due to Redis misconfiguration.'));
+        }
         if (_.isEmpty(email)) {
             return Promise.reject(new AppError('请您输入邮箱地址'));
         }
@@ -175,6 +181,12 @@ class AccountManager {
     }
 
     checkRegisterCode(email: string, token: string) {
+        if (!config.common.allowRegistration) {
+            return Promise.reject(new AppError('New account registration is disabled.'));
+        }
+        if (!redisClient) {
+            return Promise.reject(new AppError('Email verification service is unavailable due to Redis misconfiguration.'));
+        }
         return Users.findOne({ where: { email } })
             .then((u) => {
                 if (u) {
