@@ -261,7 +261,6 @@ function uploadFileToGCS(key: string, filePath: string, logger: Logger): Promise
                 // Upload file
                 return bucket.upload(filePath, {
                     destination: key,
-                    public: true, // Make file publicly accessible
                     metadata: {
                         cacheControl: 'public, max-age=31536000',
                     },
