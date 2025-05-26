@@ -14,16 +14,26 @@ import { config } from '../config';
 
 function uploadFileToLocal(key: string, filePath: string, logger: Logger): Promise<void> {
     return new Promise((resolve, reject) => {
-        logger.info(`try uploadFileToLocal`, {
+        logger.info('=== uploadFileToLocal 시작 ===', {
             key,
+            filePath,
+            timestamp: new Date().toISOString(),
         });
 
         const storageDir = _.get(config, 'local.storageDir');
+        logger.info('로컬 스토리지 설정 확인', {
+            storageDir,
+            hasStorageDir: !!storageDir,
+        });
+
         if (!storageDir) {
-            throw new AppError('please set config local storageDir');
+            const errorMsg = 'please set config local storageDir';
+            logger.error('로컬 스토리지 설정 오류', { errorMsg });
+            throw new AppError(errorMsg);
         }
         if (key.length < 3) {
-            logger.error(`generate key is too short, key value:${key}`);
+            const errorMsg = `generate key is too short, key value:${key}`;
+            logger.error('키 길이 오류', { key, keyLength: key.length, errorMsg });
             throw new AppError('generate key is too short.');
         }
         try {
@@ -31,14 +41,29 @@ function uploadFileToLocal(key: string, filePath: string, logger: Logger): Promi
             fs.accessSync(storageDir, fs.constants.W_OK);
             logger.debug(`uploadFileToLocal directory ${storageDir} fs.W_OK is ok`);
         } catch (err) {
+            logger.error('스토리지 디렉토리 접근 권한 확인 실패', {
+                storageDir,
+                error: err.message,
+                errorCode: err.code,
+            });
             throw new AppError(err);
         }
         const subDir = key.substring(0, 2).toLowerCase();
         const finalDir = path.join(storageDir, subDir);
         const fileName = path.join(finalDir, key);
+
+        logger.info('로컬 파일 경로 정보', {
+            subDir,
+            finalDir,
+            fileName,
+            finalDirExists: fs.existsSync(finalDir),
+            fileExists: fs.existsSync(fileName),
+        });
+
         if (fs.existsSync(fileName)) {
             logger.info(`uploadFileToLocal file exists, skip copy`, {
                 key,
+                fileName,
             });
 
             resolve();
@@ -46,30 +71,59 @@ function uploadFileToLocal(key: string, filePath: string, logger: Logger): Promi
         }
         let stats = fs.statSync(storageDir);
         if (!stats.isDirectory()) {
-            throw new AppError(`${storageDir} must be directory`);
+            const errorMsg = `${storageDir} must be directory`;
+            logger.error('스토리지 경로가 디렉토리가 아님', { storageDir, errorMsg });
+            throw new AppError(errorMsg);
         }
         if (!fs.existsSync(`${finalDir}`)) {
             fs.mkdirSync(`${finalDir}`);
             logger.info(`uploadFileToLocal mkdir:${finalDir}`, {
                 key,
+                finalDir,
             });
         }
         try {
             fs.accessSync(filePath, fs.constants.R_OK);
+            logger.info('소스 파일 접근 권한 확인 성공', { filePath });
         } catch (err) {
+            logger.error('소스 파일 접근 권한 확인 실패', {
+                filePath,
+                error: err.message,
+                errorCode: err.code,
+            });
             throw new AppError(err);
         }
         stats = fs.statSync(filePath);
         if (!stats.isFile()) {
-            throw new AppError(`${filePath} must be file`);
+            const errorMsg = `${filePath} must be file`;
+            logger.error('소스 경로가 파일이 아님', { filePath, errorMsg });
+            throw new AppError(errorMsg);
         }
+
+        logger.info('파일 복사 시작', {
+            source: filePath,
+            destination: fileName,
+            fileSize: stats.size,
+        });
+
         fsextra.copy(filePath, fileName, (err) => {
             if (err) {
+                logger.error('=== uploadFileToLocal 실패 ===', {
+                    key,
+                    source: filePath,
+                    destination: fileName,
+                    error: err.message,
+                    errorStack: err.stack,
+                    timestamp: new Date().toISOString(),
+                });
                 reject(new AppError(err));
                 return;
             }
-            logger.info(`uploadFileToLocal copy file success.`, {
+            logger.info('=== uploadFileToLocal 성공 ===', {
                 key,
+                source: filePath,
+                destination: fileName,
+                timestamp: new Date().toISOString(),
             });
             resolve();
         });
@@ -78,19 +132,49 @@ function uploadFileToLocal(key: string, filePath: string, logger: Logger): Promi
 
 function uploadFileToS3(key: string, filePath: string, logger: Logger): Promise<void> {
     return new Promise((resolve, reject) => {
-        logger.info('try uploadFileToS3', { key });
-        AWS.config.update({
+        logger.info('=== uploadFileToS3 시작 ===', { 
+            key,
+            filePath,
+            timestamp: new Date().toISOString(),
+        });
+
+        const s3Config = {
             accessKeyId: _.get(config, 's3.accessKeyId'),
             secretAccessKey: _.get(config, 's3.secretAccessKey'),
             sessionToken: _.get(config, 's3.sessionToken'),
             region: _.get(config, 's3.region'),
+        };
+
+        logger.info('S3 설정 정보', {
+            hasAccessKeyId: !!s3Config.accessKeyId,
+            hasSecretAccessKey: !!s3Config.secretAccessKey,
+            hasSessionToken: !!s3Config.sessionToken,
+            region: s3Config.region,
+            bucketName: _.get(config, 's3.bucketName'),
         });
+
+        AWS.config.update(s3Config);
         const s3 = new AWS.S3();
+
+        logger.info('S3 클라이언트 생성 완료, 파일 읽기 시작', { filePath });
+
         fs.readFile(filePath, (err, data) => {
             if (err) {
+                logger.error('S3 파일 읽기 실패', {
+                    filePath,
+                    error: err.message,
+                    errorCode: err.code,
+                });
                 reject(new AppError(err));
                 return;
             }
+
+            logger.info('S3 파일 읽기 성공, 업로드 시작', {
+                key,
+                fileSize: data.length,
+                bucketName: _.get(config, 's3.bucketName'),
+            });
+
             s3.upload(
                 {
                     Key: key,
@@ -98,11 +182,22 @@ function uploadFileToS3(key: string, filePath: string, logger: Logger): Promise<
                     ACL: 'public-read',
                     Bucket: _.get(config, 's3.bucketName'),
                 },
-                (error: Error) => {
+                (error: Error, result: any) => {
                     if (error) {
+                        logger.error('=== uploadFileToS3 실패 ===', {
+                            key,
+                            error: error.message,
+                            errorStack: error.stack,
+                            timestamp: new Date().toISOString(),
+                        });
                         reject(new AppError(error));
                     } else {
-                        logger.info('uploadFileToS3 success', { key });
+                        logger.info('=== uploadFileToS3 성공 ===', { 
+                            key,
+                            location: result?.Location,
+                            etag: result?.ETag,
+                            timestamp: new Date().toISOString(),
+                        });
                         resolve();
                     }
                 },
@@ -230,28 +325,74 @@ function uploadFileToTencentCloud(key: string, filePath: string, logger: Logger)
 
 function uploadFileToGCS(key: string, filePath: string, logger: Logger): Promise<void> {
     return new Promise((resolve, reject) => {
-        logger.info('try uploadFileToGCS', { key });
+        logger.info('=== uploadFileToGCS 시작 ===', { 
+            key,
+            filePath,
+            timestamp: new Date().toISOString(),
+        });
         
         const projectId = _.get(config, 'gcs.projectId');
         const keyFilename = _.get(config, 'gcs.keyFilename');
         const bucketName = _.get(config, 'gcs.bucketName');
         
+        logger.info('GCS 설정 정보', {
+            projectId,
+            keyFilename,
+            bucketName,
+            hasKeyFilename: !!keyFilename,
+            keyFilenameExists: keyFilename ? fs.existsSync(keyFilename) : false,
+            googleApplicationCredentials: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+            hasGoogleApplicationCredentials: !!process.env.GOOGLE_APPLICATION_CREDENTIALS,
+        });
+        
         if (!projectId || !bucketName) {
-            reject(new AppError('GCS projectId and bucketName are required'));
+            const errorMsg = 'GCS projectId and bucketName are required';
+            logger.error('GCS 설정 오류', { 
+                projectId, 
+                bucketName, 
+                errorMsg 
+            });
+            reject(new AppError(errorMsg));
             return;
         }
         
-        const storage = new Storage({
-            projectId,
-            keyFilename, // optional: if not provided, will use default credentials
-        });
+        let storage;
+        try {
+            const storageOptions = {
+                projectId,
+                ...(keyFilename && { keyFilename }),
+            };
+            
+            logger.info('GCS Storage 인스턴스 생성 시도', { storageOptions });
+            storage = new Storage(storageOptions);
+            logger.info('GCS Storage 인스턴스 생성 성공');
+        } catch (error) {
+            logger.error('GCS Storage 인스턴스 생성 실패', {
+                error: error.message,
+                errorStack: error.stack,
+            });
+            reject(new AppError(`GCS Storage 초기화 실패: ${error.message}`));
+            return;
+        }
         
         const bucket = storage.bucket(bucketName);
         const file = bucket.file(key);
         
+        logger.info('GCS 버킷 및 파일 객체 생성 완료', {
+            bucketName,
+            key,
+        });
+        
         // Check if file already exists
+        logger.info('GCS 파일 존재 여부 확인 시작', { key });
         file.exists()
             .then(([exists]) => {
+                logger.info('GCS 파일 존재 여부 확인 완료', { 
+                    key, 
+                    exists,
+                    timestamp: new Date().toISOString(),
+                });
+                
                 if (exists) {
                     logger.info('uploadFileToGCS file exists, skip upload', { key });
                     resolve();
@@ -259,6 +400,13 @@ function uploadFileToGCS(key: string, filePath: string, logger: Logger): Promise
                 }
                 
                 // Upload file
+                logger.info('GCS 파일 업로드 시작', {
+                    key,
+                    filePath,
+                    fileSize: fs.statSync(filePath).size,
+                    timestamp: new Date().toISOString(),
+                });
+                
                 return bucket.upload(filePath, {
                     destination: key,
                     metadata: {
@@ -266,32 +414,174 @@ function uploadFileToGCS(key: string, filePath: string, logger: Logger): Promise
                     },
                 });
             })
-            .then(() => {
-                logger.info('uploadFileToGCS success', { key });
+            .then((uploadResult) => {
+                if (uploadResult) {
+                    logger.info('GCS 파일 업로드 완료', {
+                        key,
+                        uploadResult: uploadResult[0] ? {
+                            name: uploadResult[0].name,
+                            bucket: uploadResult[0].bucket.name,
+                            generation: uploadResult[0].generation,
+                        } : null,
+                        timestamp: new Date().toISOString(),
+                    });
+                }
+                logger.info('=== uploadFileToGCS 성공 ===', { 
+                    key,
+                    timestamp: new Date().toISOString(),
+                });
                 resolve();
             })
             .catch((error) => {
-                reject(new AppError(error.message));
+                logger.error('=== uploadFileToGCS 실패 ===', {
+                    key,
+                    filePath,
+                    error: error.message,
+                    errorCode: error.code,
+                    errorStack: error.stack,
+                    errorDetails: error.errors || [],
+                    timestamp: new Date().toISOString(),
+                });
+                reject(new AppError(`GCS 업로드 실패: ${error.message}`));
             });
     });
 }
 
-export function uploadFileToStorage(key: string, filePath: string, logger: Logger): Promise<void> {
+export function uploadFileToStorage(rawKey: string, filePath: string, logger: Logger): Promise<void> {
     const { storageType } = config.common;
+
+    const prefix = 'codepush-storage';
+    const key = `${prefix}/${rawKey}`;
+
+    // Cloud Run 디버깅을 위한 상세 로그 추가
+    logger.info('=== uploadFileToStorage 시작 ===', {
+        rawKey,
+        filePath,
+        storageType,
+        finalKey: key,
+        fileExists: fs.existsSync(filePath),
+        fileStats: fs.existsSync(filePath) ? fs.statSync(filePath) : null,
+        configKeys: Object.keys(config),
+        commonConfig: config.common,
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV,
+        cloudRunService: process.env.K_SERVICE,
+        cloudRunRevision: process.env.K_REVISION,
+    });
+
+    // 파일 존재 여부 및 접근 권한 확인
+    try {
+        fs.accessSync(filePath, fs.constants.R_OK);
+        logger.info('파일 접근 권한 확인 성공', { filePath });
+    } catch (error) {
+        logger.error('파일 접근 권한 확인 실패', { 
+            filePath, 
+            error: error.message,
+            errorCode: error.code 
+        });
+        throw new AppError(`파일 접근 실패: ${error.message}`);
+    }
+
+    // 스토리지 타입별 설정 확인
+    let storageConfig = {};
     switch (storageType) {
         case 'local':
-            return uploadFileToLocal(key, filePath, logger);
+            storageConfig = { localConfig: config.local };
+            break;
         case 's3':
-            return uploadFileToS3(key, filePath, logger);
+            storageConfig = { 
+                s3Config: {
+                    hasAccessKeyId: !!_.get(config, 's3.accessKeyId'),
+                    hasSecretAccessKey: !!_.get(config, 's3.secretAccessKey'),
+                    region: _.get(config, 's3.region'),
+                    bucketName: _.get(config, 's3.bucketName'),
+                }
+            };
+            break;
         case 'oss':
-            return uploadFileToOSS(key, filePath, logger);
+            storageConfig = {
+                ossConfig: {
+                    hasAccessKeyId: !!_.get(config, 'oss.accessKeyId'),
+                    hasSecretAccessKey: !!_.get(config, 'oss.secretAccessKey'),
+                    endpoint: _.get(config, 'oss.endpoint'),
+                    bucketName: _.get(config, 'oss.bucketName'),
+                    prefix: _.get(config, 'oss.prefix'),
+                }
+            };
+            break;
         case 'qiniu':
-            return uploadFileToQiniu(key, filePath, logger);
+            storageConfig = {
+                qiniuConfig: {
+                    hasAccessKey: !!_.get(config, 'qiniu.accessKey'),
+                    hasSecretKey: !!_.get(config, 'qiniu.secretKey'),
+                    bucketName: _.get(config, 'qiniu.bucketName'),
+                }
+            };
+            break;
         case 'tencentcloud':
-            return uploadFileToTencentCloud(key, filePath, logger);
+            storageConfig = {
+                tencentcloudConfig: {
+                    hasAccessKeyId: !!_.get(config, 'tencentcloud.accessKeyId'),
+                    hasSecretAccessKey: !!_.get(config, 'tencentcloud.secretAccessKey'),
+                    region: _.get(config, 'tencentcloud.region'),
+                    bucketName: _.get(config, 'tencentcloud.bucketName'),
+                }
+            };
+            break;
         case 'gcs':
-            return uploadFileToGCS(key, filePath, logger);
-        default:
-            throw new AppError(`${storageType} storageType does not support.`);
+            storageConfig = {
+                gcsConfig: {
+                    projectId: _.get(config, 'gcs.projectId'),
+                    hasKeyFilename: !!_.get(config, 'gcs.keyFilename'),
+                    bucketName: _.get(config, 'gcs.bucketName'),
+                    keyFilename: _.get(config, 'gcs.keyFilename'),
+                }
+            };
+            break;
     }
+
+    logger.info('스토리지 설정 확인', {
+        storageType,
+        ...storageConfig,
+    });
+
+    const uploadPromise = (() => {
+        switch (storageType) {
+            case 'local':
+                return uploadFileToLocal(key, filePath, logger);
+            // case 's3':
+            //     return uploadFileToS3(key, filePath, logger);
+            // case 'oss':
+            //     return uploadFileToOSS(key, filePath, logger);
+            // case 'qiniu':
+            //     return uploadFileToQiniu(key, filePath, logger);
+            // case 'tencentcloud':
+            //     return uploadFileToTencentCloud(key, filePath, logger);
+            case 'gcs':
+                return uploadFileToGCS(key, filePath, logger);
+            default:
+                throw new AppError(`${storageType} storageType does not support.`);
+        }
+    })();
+
+    return uploadPromise
+        .then(() => {
+            logger.info('=== uploadFileToStorage 성공 ===', {
+                rawKey,
+                finalKey: key,
+                storageType,
+                timestamp: new Date().toISOString(),
+            });
+        })
+        .catch((error) => {
+            logger.error('=== uploadFileToStorage 실패 ===', {
+                rawKey,
+                finalKey: key,
+                storageType,
+                error: error.message,
+                errorStack: error.stack,
+                timestamp: new Date().toISOString(),
+            });
+            throw error;
+        });
 }
